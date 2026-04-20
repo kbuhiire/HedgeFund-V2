@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -134,6 +134,24 @@ class AgentVerdictRecord(Base):
     verdict: Mapped[str] = mapped_column(String(10), nullable=False)
     confidence: Mapped[int] = mapped_column(Integer, nullable=False)
     verdict_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class User(Base):
+    """Analyst/user account for authentication."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(
+        String(255), unique=True, nullable=False, index=True
+    )
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
 
 
 class CIODecisionRecord(Base):

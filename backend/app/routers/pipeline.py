@@ -12,13 +12,18 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.deps import get_current_user
 from app.db.deps import get_session
 from app.db.models import AgentVerdictRecord, CIODecisionRecord, DetectedSignal
 from app.tasks.celery_app import app as celery_app
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
+router = APIRouter(
+    prefix="/api/v1/pipeline",
+    tags=["pipeline"],
+    dependencies=[Depends(get_current_user)],
+)
 
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 

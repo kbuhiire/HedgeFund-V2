@@ -45,6 +45,21 @@ services:
       bash -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "9000:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - API_HOST=http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
   celery_worker:
     build:
       context: ./backend

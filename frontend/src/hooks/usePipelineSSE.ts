@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { usePipelineStore } from '@/store/pipelineStore'
+import { getToken } from '@/lib/api'
 
 // ─── SSE connection state ─────────────────────────────────────────────────
 
@@ -32,7 +33,9 @@ export function usePipelineSSE(url: string) {
 
   useEffect(() => {
     setStatus('connecting')
-    const es = new EventSource(url)
+    const token = getToken()
+    const sseUrl = token ? `${url}?token=${encodeURIComponent(token)}` : url
+    const es = new EventSource(sseUrl)
 
     es.onopen = () => {
       setStatus('connected')

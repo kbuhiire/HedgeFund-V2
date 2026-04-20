@@ -14,10 +14,13 @@ import asyncio  # noqa: F401 — available for future generator sleep patterns
 import logging
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
 
 import redis.asyncio as aioredis
+
+from app.auth.deps import get_current_user_from_query
+from app.db.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +30,9 @@ _REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 
 
 @router.get("/stream")
-async def stream_pipeline_events() -> EventSourceResponse:
+async def stream_pipeline_events(
+    _user: User = Depends(get_current_user_from_query),
+) -> EventSourceResponse:
     """Stream pipeline events from Redis Pub/Sub as Server-Sent Events.
 
     Each SSE message has ``event: pipeline`` and ``data`` containing the

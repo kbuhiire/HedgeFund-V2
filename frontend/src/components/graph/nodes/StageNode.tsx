@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { cn } from '@/lib/utils'
 import type { PipelineNodeData, NodeStatus } from '@/store/pipelineStore'
 
@@ -27,8 +27,8 @@ function statusBorderClass(status: NodeStatus): string {
   }
 }
 
-function StageNodeComponent({ data, id }: NodeProps<{ data: StageNodeData }>) {
-  const { label, status, lastResult, lastScanTime, consensus, consensusPct, conviction } = data as StageNodeData
+function StageNodeComponent({ data, id }: NodeProps<Node<StageNodeData>>) {
+  const { label, status, lastResult, lastScanTime, consensus, consensusPct, conviction } = data
 
   // Scanner and signal_detector have no target handle (they're sources)
   const isEntry = id === 'scanner'

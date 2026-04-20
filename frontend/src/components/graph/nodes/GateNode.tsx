@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import type { PipelineNodeData, NodeStatus } from '@/store/pipelineStore'
@@ -50,8 +50,8 @@ function FilterIcon({ className }: { className?: string }) {
   )
 }
 
-function GateNodeComponent({ data }: NodeProps<{ data: GateNodeData }>) {
-  const { label, status, passCount, totalCount } = data as GateNodeData
+function GateNodeComponent({ data }: NodeProps<Node<GateNodeData>>) {
+  const { label, status, passCount, totalCount } = data
   const isRunning = status === 'running'
   const isComplete = status === 'complete'
 

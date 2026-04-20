@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { usePipelineStore } from '@/store/pipelineStore'
+import { apiFetch } from '@/lib/api'
 import {
   Sheet,
   SheetContent,
@@ -85,7 +86,7 @@ export function OpportunitySheet() {
     setNotFound(false)
     setDetail(null)
 
-    fetch(`/api/v1/opportunities/${selectedOpportunityId}`)
+    apiFetch(`/api/v1/opportunities/${selectedOpportunityId}`)
       .then(async (res) => {
         if (res.status === 404) {
           if (!cancelled) setNotFound(true)

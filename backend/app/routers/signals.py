@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.deps import get_current_user
 from app.db.deps import get_session
 from app.db.models import DetectedSignal
 
@@ -30,7 +31,11 @@ class SignalResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-router = APIRouter(prefix="/api/v1/signals", tags=["signals"])
+router = APIRouter(
+    prefix="/api/v1/signals",
+    tags=["signals"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("", response_model=list[SignalResponse])

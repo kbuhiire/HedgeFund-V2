@@ -149,7 +149,6 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
         const persona = data['persona'] as string | undefined
         const verdict = data['verdict'] as string | undefined
         const ticker = data['ticker'] as string | undefined
-        const opportunityId = data['opportunity_id'] as string | undefined
         if (persona) {
           updateNodeStatus(persona, 'complete', {
             lastResult: verdict ? String(verdict) : undefined,

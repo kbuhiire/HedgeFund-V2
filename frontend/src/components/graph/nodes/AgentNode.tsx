@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import type { PipelineNodeData, NodeStatus } from '@/store/pipelineStore'
@@ -31,8 +31,8 @@ function statusBadgeVariant(status: NodeStatus): 'default' | 'running' | 'succes
   }
 }
 
-function AgentNodeComponent({ data }: NodeProps<{ data: PipelineNodeData }>) {
-  const { label, status, lastResult } = data as PipelineNodeData
+function AgentNodeComponent({ data }: NodeProps<Node<PipelineNodeData>>) {
+  const { label, status, lastResult } = data
   const isRunning = status === 'running'
   const isComplete = status === 'complete'
 

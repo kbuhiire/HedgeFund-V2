@@ -16,3 +16,7 @@ tenacity
 python-dotenv
 psycopg2-binary
 yfinance
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt<4.0.0
+email-validator

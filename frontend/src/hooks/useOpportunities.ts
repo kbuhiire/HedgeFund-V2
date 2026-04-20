@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { Opportunity, AgentScore } from '@/types/pipeline'
 import { usePipelineStore } from '@/store/pipelineStore'
+import { apiFetch } from '@/lib/api'
 
 // ─── API response shapes ────────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ export async function fetchOpportunityDetail(
   baseUrl: string,
   id: string
 ): Promise<ApiOpportunityDetail> {
-  const res = await fetch(`${baseUrl}/${id}`)
+  const res = await apiFetch(`${baseUrl}/${id}`)
   if (!res.ok) {
     throw new Error(`fetchOpportunityDetail: ${res.status} for id=${id}`)
   }
@@ -109,7 +110,7 @@ export function useOpportunities(baseUrl: string) {
 
     async function hydrate() {
       try {
-        const summaryRes = await fetch(`${baseUrl}?limit=10`)
+        const summaryRes = await apiFetch(`${baseUrl}?limit=10`)
         if (!summaryRes.ok) {
           console.warn(
             `[useOpportunities] GET ${baseUrl}?limit=10 returned ${summaryRes.status} — backend may not be running`

@@ -18,12 +18,17 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.deps import get_current_user
 from app.db.deps import get_session
 from app.db.models import AgentVerdictRecord, CIODecisionRecord
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/opportunities", tags=["opportunities"])
+router = APIRouter(
+    prefix="/api/v1/opportunities",
+    tags=["opportunities"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 # ---------------------------------------------------------------------------

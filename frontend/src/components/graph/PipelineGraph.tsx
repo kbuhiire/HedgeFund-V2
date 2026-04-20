@@ -1,4 +1,4 @@
-import { ReactFlow, Background, Controls, MiniMap, type NodeTypes, type EdgeTypes } from '@xyflow/react'
+import { ReactFlow, Background, Controls, MiniMap, PanOnScrollMode, type NodeTypes, type EdgeTypes } from '@xyflow/react'
 import { usePipelineStore } from '@/store/pipelineStore'
 import { AgentNode } from './nodes/AgentNode'
 import { GateNode } from './nodes/GateNode'
@@ -36,7 +36,7 @@ export function PipelineGraph() {
       minZoom={0.3}
       maxZoom={2.5}
       panOnScroll
-      panOnScrollMode="free"
+      panOnScrollMode={PanOnScrollMode.Free}
       className="bloomberg-flow"
       proOptions={{ hideAttribution: true }}
     >
