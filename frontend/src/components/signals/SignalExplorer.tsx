@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { TrendingUp, TrendingDown, Minus, SlidersHorizontal, Check } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { apiFetch } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useSignalSSE, type SignalSSEStatus } from '@/hooks/useSignalSSE'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,14 @@ const SIGNAL_COLORS: Record<string, string> = {
 type FilterType = 'all' | 'passed' | 'failed'
 type SortKey = 'detected_at' | 'composite_score' | 'score'
 
+// ─── SSE status dot ───────────────────────────────────────────────────────────
+
+const SSE_STATUS: Record<SignalSSEStatus, { dot: string; label: string }> = {
+  connected:    { dot: 'bg-emerald-500 animate-pulse', label: 'LIVE' },
+  connecting:   { dot: 'bg-yellow-500 animate-pulse',  label: 'CONNECTING' },
+  disconnected: { dot: 'bg-zinc-600',                   label: 'OFFLINE' },
+}
+
 // ─── Score bar ────────────────────────────────────────────────────────────────
 
 function ScoreBar({ value, colorClass }: { value: number; colorClass?: string }) {
@@ -56,7 +66,7 @@ function ScoreBar({ value, colorClass }: { value: number; colorClass?: string })
 
 // ─── Signal row ───────────────────────────────────────────────────────────────
 
-function SignalRow({ signal }: { signal: DetectedSignal }) {
+function SignalRow({ signal, isNew }: { signal: DetectedSignal; isNew?: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const typeColor = SIGNAL_COLORS[signal.signal_type] ?? 'text-zinc-400 border-zinc-700 bg-zinc-900'
   const label = SIGNAL_TYPE_LABELS[signal.signal_type] ?? signal.signal_type
@@ -67,8 +77,9 @@ function SignalRow({ signal }: { signal: DetectedSignal }) {
   return (
     <div
       className={cn(
-        'rounded-lg border bg-zinc-900 transition-colors',
-        signal.passed_gate ? 'border-zinc-700' : 'border-zinc-800 opacity-60'
+        'rounded-lg border bg-zinc-900 transition-all duration-500',
+        signal.passed_gate ? 'border-zinc-700' : 'border-zinc-800 opacity-60',
+        isNew && 'border-emerald-700 bg-emerald-950/20 animate-[fadeIn_0.5s_ease-out]',
       )}
     >
       <button
@@ -76,39 +87,27 @@ function SignalRow({ signal }: { signal: DetectedSignal }) {
         className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-zinc-800/40 transition-colors rounded-lg"
         onClick={() => setExpanded(v => !v)}
       >
-        {/* Ticker */}
         <span className="w-14 shrink-0 font-mono text-sm font-bold text-zinc-100">{signal.ticker}</span>
-
-        {/* Signal type badge */}
         <span className={cn('shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px]', typeColor)}>
           {label}
         </span>
-
-        {/* Gate indicator */}
         <span className={cn('shrink-0', signal.passed_gate ? 'text-emerald-500' : 'text-zinc-600')}>
           {signal.passed_gate ? <TrendingUp className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
         </span>
-
-        {/* Composite score bar */}
         <div className="flex-1 min-w-0">
           <ScoreBar
             value={signal.composite_score}
             colorClass={signal.passed_gate ? 'bg-emerald-500' : 'bg-zinc-600'}
           />
         </div>
-
-        {/* Individual score */}
         <span className="shrink-0 font-mono text-xs text-zinc-500">
           {(signal.score * 100).toFixed(0)}
         </span>
-
-        {/* Time */}
         <span className="shrink-0 font-mono text-[10px] text-zinc-600">
           {new Date(signal.detected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
       </button>
 
-      {/* Expanded detail panel */}
       {expanded && detail && detailKeys.length > 0 && (
         <div className="border-t border-zinc-800 px-3 py-2.5">
           <p className="mb-1.5 font-mono text-[9px] uppercase tracking-widest text-zinc-600">Detector detail</p>
@@ -130,14 +129,139 @@ function SignalRow({ signal }: { signal: DetectedSignal }) {
   )
 }
 
+// ─── Threshold Simulator ──────────────────────────────────────────────────────
+
+function ThresholdSimulator({ signals }: { signals: DetectedSignal[] }) {
+  const [open, setOpen] = useState(false)
+  const [localThreshold, setLocalThreshold] = useState(0.35)
+  const [currentThreshold, setCurrentThreshold] = useState(0.35)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    apiFetch('/api/v1/config/thresholds')
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { thresholds: { signal_quality_gate: number } } | null) => {
+        if (d) {
+          setCurrentThreshold(d.thresholds.signal_quality_gate)
+          setLocalThreshold(d.thresholds.signal_quality_gate)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const uniqueTickers = Array.from(new Set(signals.map(s => s.ticker)))
+  const wouldPass = uniqueTickers.filter(ticker => {
+    const tickerSignals = signals.filter(s => s.ticker === ticker)
+    const maxComposite = Math.max(...tickerSignals.map(s => s.composite_score))
+    return maxComposite >= localThreshold
+  }).length
+  const wouldFail = uniqueTickers.length - wouldPass
+
+  async function applyThreshold() {
+    setSaving(true)
+    try {
+      const res = await apiFetch('/api/v1/config/thresholds', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signal_quality_gate: localThreshold }),
+      })
+      if (res.ok) {
+        setCurrentThreshold(localThreshold)
+        toast.success(`Quality gate set to ${(localThreshold * 100).toFixed(0)}%`)
+      } else {
+        toast.error('Failed to update threshold')
+      }
+    } catch {
+      toast.error('Request failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const isDirty = Math.abs(localThreshold - currentThreshold) > 0.001
+
+  return (
+    <div className="border border-zinc-800 rounded-md overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex w-full items-center justify-between px-3 py-2 hover:bg-zinc-800/40 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="h-3 w-3 text-zinc-500" />
+          <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Threshold Simulator</span>
+        </div>
+        <span className="font-mono text-[10px] text-zinc-600">
+          current: <span className="text-zinc-400">{(currentThreshold * 100).toFixed(0)}%</span>
+        </span>
+      </button>
+
+      {open && (
+        <div className="border-t border-zinc-800 px-3 py-3 space-y-3">
+          {/* Slider */}
+          <div className="space-y-1.5">
+            <div className="flex justify-between">
+              <span className="font-mono text-[10px] text-zinc-500">Quality Gate</span>
+              <span className={cn('font-mono text-[10px]', isDirty ? 'text-yellow-400' : 'text-zinc-400')}>
+                {(localThreshold * 100).toFixed(0)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={localThreshold}
+              onChange={e => setLocalThreshold(parseFloat(e.target.value))}
+              className="w-full accent-emerald-500 h-1"
+            />
+            <div className="flex justify-between font-mono text-[9px] text-zinc-700">
+              <span>0%</span>
+              <span>50%</span>
+              <span>100%</span>
+            </div>
+          </div>
+
+          {/* Preview counts */}
+          {signals.length > 0 && (
+            <div className="flex gap-3">
+              <div className="flex-1 rounded border border-emerald-900 bg-emerald-950/20 px-2 py-1.5 text-center">
+                <p className="font-mono text-base font-bold text-emerald-400">{wouldPass}</p>
+                <p className="font-mono text-[9px] text-emerald-700">tickers pass</p>
+              </div>
+              <div className="flex-1 rounded border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-center">
+                <p className="font-mono text-base font-bold text-zinc-500">{wouldFail}</p>
+                <p className="font-mono text-[9px] text-zinc-700">tickers fail</p>
+              </div>
+            </div>
+          )}
+
+          {/* Apply button */}
+          <button
+            type="button"
+            onClick={() => void applyThreshold()}
+            disabled={!isDirty || saving}
+            className="flex w-full items-center justify-center gap-1.5 rounded border border-zinc-700 py-1.5 font-mono text-[10px] text-zinc-400 hover:border-emerald-700 hover:text-emerald-400 disabled:opacity-40 transition-colors"
+          >
+            <Check className="h-3 w-3" />
+            {saving ? 'Applying…' : isDirty ? 'Apply to next scan' : 'No change'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Signal Explorer ──────────────────────────────────────────────────────────
 
 export function SignalExplorer() {
   const [signals, setSignals] = useState<DetectedSignal[]>([])
+  const [newSignalKeys, setNewSignalKeys] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState<FilterType>('all')
   const [sortKey, setSortKey] = useState<SortKey>('detected_at')
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  const newKeyTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -156,6 +280,34 @@ export function SignalExplorer() {
 
   useEffect(() => { void load() }, [load])
 
+  const handleNewSignal = useCallback((signal: DetectedSignal) => {
+    const key = `${signal.ticker}-${signal.signal_type}-${signal.detected_at}`
+    setSignals(prev => {
+      const exists = prev.some(
+        s => s.ticker === signal.ticker && s.signal_type === signal.signal_type && s.detected_at === signal.detected_at
+      )
+      return exists ? prev : [signal, ...prev]
+    })
+    setNewSignalKeys(prev => new Set(prev).add(key))
+    const timer = newKeyTimers.current.get(key)
+    if (timer) clearTimeout(timer)
+    newKeyTimers.current.set(key, setTimeout(() => {
+      setNewSignalKeys(prev => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    }, 3000))
+  }, [])
+
+  const { status: sseStatus } = useSignalSSE(handleNewSignal)
+
+  // Clean up highlight timers on unmount
+  useEffect(() => {
+    const timers = newKeyTimers.current
+    return () => { timers.forEach(clearTimeout) }
+  }, [])
+
   const filtered = signals
     .filter(s => {
       if (filter === 'passed') return s.passed_gate
@@ -171,6 +323,7 @@ export function SignalExplorer() {
 
   const passCount = signals.filter(s => s.passed_gate).length
   const signalTypes = Array.from(new Set(signals.map(s => s.signal_type)))
+  const { dot, label } = SSE_STATUS[sseStatus]
 
   return (
     <div className="flex h-full flex-col">
@@ -184,20 +337,16 @@ export function SignalExplorer() {
             <Badge className="border-transparent bg-zinc-800 font-mono text-xs text-zinc-300">
               {passCount}/{signals.length} passed gate
             </Badge>
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
-              title="Refresh signals"
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-            </button>
+            {/* Live SSE indicator */}
+            <div className="flex items-center gap-1.5" title={`Signal stream: ${label}`}>
+              <span className={cn('h-2 w-2 rounded-full', dot)} />
+              <span className="font-mono text-[10px] text-zinc-600">{label}</span>
+            </div>
           </div>
         </div>
 
         {/* Filter controls */}
         <div className="flex flex-wrap gap-2">
-          {/* Gate filter */}
           <div className="flex rounded-md border border-zinc-800 overflow-hidden">
             {(['all', 'passed', 'failed'] as FilterType[]).map(f => (
               <button
@@ -214,9 +363,8 @@ export function SignalExplorer() {
             ))}
           </div>
 
-          {/* Sort */}
           <div className="flex rounded-md border border-zinc-800 overflow-hidden">
-            {([['detected_at', 'Latest'], ['composite_score', 'Score'], ['score', 'Detector']] as [SortKey, string][]).map(([k, label]) => (
+            {([['detected_at', 'Latest'], ['composite_score', 'Score'], ['score', 'Detector']] as [SortKey, string][]).map(([k, lbl]) => (
               <button
                 key={k}
                 type="button"
@@ -226,12 +374,11 @@ export function SignalExplorer() {
                   sortKey === k ? 'bg-zinc-700 text-zinc-200' : 'text-zinc-500 hover:bg-zinc-800'
                 )}
               >
-                {label}
+                {lbl}
               </button>
             ))}
           </div>
 
-          {/* Type filter */}
           {signalTypes.length > 0 && (
             <select
               value={typeFilter}
@@ -245,6 +392,9 @@ export function SignalExplorer() {
             </select>
           )}
         </div>
+
+        {/* Threshold Simulator */}
+        <ThresholdSimulator signals={signals} />
       </div>
 
       {/* Signal list */}
@@ -261,9 +411,17 @@ export function SignalExplorer() {
               <p className="text-xs text-zinc-600">No signals match the current filter</p>
             </div>
           )}
-          {filtered.map((s, i) => (
-            <SignalRow key={`${s.ticker}-${s.signal_type}-${s.detected_at}-${i}`} signal={s} />
-          ))}
+          {filtered.map((s, i) => {
+            const key = `${s.ticker}-${s.signal_type}-${s.detected_at}-${i}`
+            const signalKey = `${s.ticker}-${s.signal_type}-${s.detected_at}`
+            return (
+              <SignalRow
+                key={key}
+                signal={s}
+                isNew={newSignalKeys.has(signalKey)}
+              />
+            )
+          })}
         </div>
       </ScrollArea>
     </div>

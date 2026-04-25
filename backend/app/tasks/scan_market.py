@@ -109,6 +109,19 @@ def run(self, tickers_override: list[str] | None = None) -> dict:  # type: ignor
                         source="scanner",
                     )
                     session.merge(record)
+                    try:
+                        r.publish("signal:events", json.dumps({
+                            "ticker": signal["ticker"],
+                            "signal_type": signal["signal_type"],
+                            "score": float(signal["score"]),
+                            "composite_score": composite,
+                            "passed_gate": gate_passed,
+                            "detected_at": detected_at.isoformat(),
+                            "detail": signal.get("detail"),
+                            "source": "scanner",
+                        }, default=str))
+                    except Exception:  # noqa: BLE001
+                        pass
 
             except Exception as exc:  # noqa: BLE001
                 msg = f"{ticker}: {exc}"

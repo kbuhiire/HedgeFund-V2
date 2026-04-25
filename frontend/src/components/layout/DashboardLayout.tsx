@@ -5,6 +5,7 @@ import { PipelineGraph } from '@/components/graph/PipelineGraph'
 import { OpportunityFeed } from '@/components/feed/OpportunityFeed'
 import { OutputDashboard } from '@/components/output/OutputDashboard'
 import { SignalExplorer } from '@/components/signals/SignalExplorer'
+import { SignalHeatmap } from '@/components/signals/SignalHeatmap'
 import { WatchlistPanel } from '@/components/watchlist/WatchlistPanel'
 import { ThresholdDrawer } from '@/components/settings/ThresholdDrawer'
 import { useSSEStore, type SSEStatus } from '@/hooks/usePipelineSSE'
@@ -214,7 +215,7 @@ function PipelineStats() {
 // ─── Tab types ────────────────────────────────────────────────────────────────
 
 type MiddleTab = 'feed' | 'signals'
-type RightTab = 'opportunities' | 'watchlist'
+type RightTab = 'opportunities' | 'watchlist' | 'heatmap'
 
 // ─── DashboardLayout ─────────────────────────────────────────────────────────
 
@@ -301,7 +302,7 @@ export function DashboardLayout() {
         <div className="flex flex-col overflow-hidden">
           {/* Tab bar */}
           <div className="flex shrink-0 border-b border-zinc-800">
-            {(['opportunities', 'watchlist'] as RightTab[]).map(tab => (
+            {(['opportunities', 'watchlist', 'heatmap'] as RightTab[]).map(tab => (
               <button
                 key={tab}
                 type="button"
@@ -313,12 +314,14 @@ export function DashboardLayout() {
                     : 'text-zinc-600 hover:text-zinc-400'
                 )}
               >
-                {tab === 'opportunities' ? 'Opportunities' : 'Watchlist'}
+                {tab === 'opportunities' ? 'Opps' : tab === 'watchlist' ? 'Watchlist' : 'Heatmap'}
               </button>
             ))}
           </div>
           <div className="flex-1 overflow-hidden">
-            {rightTab === 'opportunities' ? <OutputDashboard /> : <WatchlistPanel />}
+            {rightTab === 'opportunities' && <OutputDashboard />}
+            {rightTab === 'watchlist' && <WatchlistPanel />}
+            {rightTab === 'heatmap' && <SignalHeatmap />}
           </div>
         </div>
       </div>
