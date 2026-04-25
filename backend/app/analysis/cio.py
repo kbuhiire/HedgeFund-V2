@@ -23,6 +23,7 @@ Decision rules:
 from __future__ import annotations
 
 import logging
+import os
 import statistics
 from typing import TYPE_CHECKING
 
@@ -32,6 +33,8 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
+
+_VARIANCE_THRESHOLD = float(os.environ.get("AGENT_VARIANCE_THRESHOLD", "8.0"))
 
 
 def make_cio_decision(report: CommitteeReport) -> CIODecision:
@@ -122,10 +125,17 @@ def make_cio_decision(report: CommitteeReport) -> CIODecision:
 
     # -----------------------------------------------------------------
     # Final verdict
+    # High inter-agent variance means contested signal — cap at MONITOR
+    # even if the raw consensus would say INVEST.
     # -----------------------------------------------------------------
+    high_variance = report.variance_score > _VARIANCE_THRESHOLD
     consensus = report.consensus
-    if consensus == "BUY" and conviction >= 40:
+
+    if consensus == "BUY" and conviction >= 40 and not high_variance:
         final_verdict = "INVEST"
+    elif consensus == "BUY" and conviction >= 40 and high_variance:
+        # Strong consensus but agents disagree on confidence — downgrade
+        final_verdict = "MONITOR"
     elif consensus == "BUY":
         final_verdict = "MONITOR"
     elif consensus == "SPLIT" and conviction >= 40:
@@ -136,6 +146,15 @@ def make_cio_decision(report: CommitteeReport) -> CIODecision:
         final_verdict = "MONITOR"
     else:
         final_verdict = "PASS"
+
+    if high_variance:
+        logger.info(
+            "High variance (%.2f > %.2f) for %s — verdict capped or flagged at %s",
+            report.variance_score,
+            _VARIANCE_THRESHOLD,
+            report.opportunity_id,
+            final_verdict,
+        )
 
     decision = CIODecision(
         opportunity_id=report.opportunity_id,

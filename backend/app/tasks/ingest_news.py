@@ -35,10 +35,17 @@ def _dedup(snapshots: list[FinancialSnapshot]) -> list[FinancialSnapshot]:
 
 
 @app.task(name="app.tasks.ingest_news.run", bind=True, max_retries=3)
-def run(self: object) -> dict:
-    """Fetch news for every WATCHLIST ticker from yfinance, deduplicate, and persist."""
-    watchlist_raw = os.environ.get("WATCHLIST", _DEFAULT_WATCHLIST)
-    tickers = [t.strip() for t in watchlist_raw.split(",") if t.strip()]
+def run(self: object, tickers_override: list[str] | None = None) -> dict:
+    """Fetch news for every WATCHLIST ticker from yfinance, deduplicate, and persist.
+
+    Args:
+        tickers_override: If provided, fetch only these tickers instead of the full watchlist.
+    """
+    if tickers_override:
+        tickers = [t.strip().upper() for t in tickers_override if t.strip()]
+    else:
+        watchlist_raw = os.environ.get("WATCHLIST", _DEFAULT_WATCHLIST)
+        tickers = [t.strip() for t in watchlist_raw.split(",") if t.strip()]
 
     connector = YFinanceConnector()
     total_inserted = 0

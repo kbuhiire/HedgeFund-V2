@@ -17,14 +17,18 @@ _DEFAULT_WATCHLIST = "SMR,OKLO,LEU,NNE,VST,IONQ,RGTI,QUBT,PLTR,RKLB,SMCI,VRT,CRS
 
 
 @app.task(name="app.tasks.ingest_price.run", bind=True, max_retries=3)
-def run(self: object, days_back: int = 1) -> dict:
+def run(self: object, days_back: int = 1, tickers_override: list[str] | None = None) -> dict:
     """Fetch OHLCV bars for every ticker in WATCHLIST and upsert into DB.
 
     Args:
         days_back: Number of days of history to fetch (default 1 = yesterday only).
+        tickers_override: If provided, scan only these tickers instead of the full watchlist.
     """
-    watchlist_raw = os.environ.get("WATCHLIST", _DEFAULT_WATCHLIST)
-    tickers = [t.strip() for t in watchlist_raw.split(",") if t.strip()]
+    if tickers_override:
+        tickers = [t.strip().upper() for t in tickers_override if t.strip()]
+    else:
+        watchlist_raw = os.environ.get("WATCHLIST", _DEFAULT_WATCHLIST)
+        tickers = [t.strip() for t in watchlist_raw.split(",") if t.strip()]
 
     today = date.today()
     yesterday = today - timedelta(days=days_back)

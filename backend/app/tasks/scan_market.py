@@ -37,11 +37,15 @@ def _parse_watchlist() -> list[str]:
 
 
 @app.task(name="app.tasks.scan_market.run", bind=True, max_retries=2)
-def run(self) -> dict:  # type: ignore[override]
-    """Scan watchlist tickers, detect signals, score, gate, and persist."""
+def run(self, tickers_override: list[str] | None = None) -> dict:  # type: ignore[override]
+    """Scan watchlist tickers, detect signals, score, gate, and persist.
+
+    Args:
+        tickers_override: If provided, scan only these tickers instead of the full watchlist.
+    """
     r = redis.from_url(_REDIS_URL)
 
-    watchlist = _parse_watchlist()
+    watchlist = [t.strip().upper() for t in tickers_override if t.strip()] if tickers_override else _parse_watchlist()
     passed = 0
     rejected = 0
     enqueued_count = 0
