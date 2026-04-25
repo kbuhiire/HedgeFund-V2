@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { toast } from 'sonner'
 import {
   type Node,
   type Edge,
@@ -184,6 +185,19 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
           const riskRating = (decision['risk_rating'] as string) ?? 'UNKNOWN'
           // Map backend INVEST/MONITOR/PASS to display-friendly values
           const isApproval = new Set(['INVEST', 'MONITOR', 'BUY', 'HOLD']).has(finalVerdict)
+
+          // Fire prominent toast notifications for high-signal decisions
+          if (finalVerdict === 'INVEST') {
+            toast.success(`🚀 INVEST — ${ticker}`, {
+              description: `Conviction ${convictionScore} · Risk ${riskRating}`,
+              duration: 10000,
+            })
+          } else if (finalVerdict === 'MONITOR') {
+            toast(`👀 MONITOR — ${ticker}`, {
+              description: `Conviction ${convictionScore} · Risk ${riskRating}`,
+              duration: 5000,
+            })
+          }
 
           // Build FeedItem for the activity feed
           const decisionItem: FeedItem = {

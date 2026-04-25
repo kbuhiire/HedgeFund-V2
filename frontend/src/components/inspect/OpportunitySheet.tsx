@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, AlertTriangle, CheckCircle2, TrendingUp } from 'lucide-react'
 import { usePipelineStore } from '@/store/pipelineStore'
 import { apiFetch } from '@/lib/api'
 import {
@@ -14,6 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { AgentVerdictPanel } from '@/components/inspect/AgentVerdictPanel'
 import type { AgentScore } from '@/types/pipeline'
+import { cn } from '@/lib/utils'
 
 // ─── API response types ──────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ interface OpportunityDetail {
   verdicts: Record<string, unknown>[]
 }
 
-// ─── Verdict badge variant ───────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function verdictBadgeVariant(verdict: string): 'success' | 'destructive' | 'warning' | 'running' | 'default' {
   switch (verdict.toUpperCase()) {
@@ -37,18 +38,15 @@ function verdictBadgeVariant(verdict: string): 'success' | 'destructive' | 'warn
   }
 }
 
-// ─── Risk rating badge ───────────────────────────────────────────────────────
-
 function riskBadgeVariant(risk: string): 'success' | 'destructive' | 'warning' | 'default' {
   switch (risk.toUpperCase()) {
-    case 'LOW':    return 'success'
-    case 'HIGH':   return 'destructive'
-    case 'MEDIUM': return 'warning'
-    default:       return 'default'
+    case 'LOW':       return 'success'
+    case 'HIGH':
+    case 'VERY_HIGH': return 'destructive'
+    case 'MEDIUM':    return 'warning'
+    default:          return 'default'
   }
 }
-
-// ─── Map raw verdict dict to AgentScore ─────────────────────────────────────
 
 function toAgentScore(raw: Record<string, unknown>): AgentScore {
   return {
@@ -60,6 +58,90 @@ function toAgentScore(raw: Record<string, unknown>): AgentScore {
     upsideScenario: (raw['upside_scenario'] as string | undefined),
     timeHorizon: (raw['time_horizon'] as string | undefined),
   }
+}
+
+/** Compute population standard deviation of confidence scores. */
+function computeVariance(agents: AgentScore[]): number {
+  if (agents.length < 2) return 0
+  const mean = agents.reduce((s, a) => s + a.confidence, 0) / agents.length
+  const sqDiffs = agents.map(a => (a.confidence - mean) ** 2)
+  return Math.sqrt(sqDiffs.reduce((s, d) => s + d, 0) / agents.length)
+}
+
+// ─── Agent consensus chart ────────────────────────────────────────────────────
+
+function ConsensusBar({ agents }: { agents: AgentScore[] }) {
+  const votes: Record<string, number> = {}
+  for (const a of agents) {
+    votes[a.verdict] = (votes[a.verdict] ?? 0) + 1
+  }
+
+  const colorMap: Record<string, string> = {
+    BUY: 'bg-emerald-500',
+    HOLD: 'bg-yellow-500',
+    PASS: 'bg-red-500',
+    SELL: 'bg-red-600',
+    MONITOR: 'bg-blue-500',
+  }
+
+  const total = agents.length
+
+  return (
+    <div className="space-y-1.5">
+      <p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Consensus Distribution</p>
+      <div className="flex h-3 w-full overflow-hidden rounded-full bg-zinc-800">
+        {Object.entries(votes).map(([verdict, count]) => (
+          <div
+            key={verdict}
+            className={cn('h-full transition-all', colorMap[verdict] ?? 'bg-zinc-500')}
+            style={{ width: `${(count / total) * 100}%` }}
+            title={`${verdict}: ${count}/${total}`}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {Object.entries(votes).map(([verdict, count]) => (
+          <div key={verdict} className="flex items-center gap-1">
+            <div className={cn('h-2 w-2 rounded-full', colorMap[verdict] ?? 'bg-zinc-500')} />
+            <span className="font-mono text-[10px] text-zinc-400">{verdict} {count}/{total}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Variance badge ───────────────────────────────────────────────────────────
+
+function VarianceBadge({ variance, threshold = 8 }: { variance: number; threshold?: number }) {
+  const isHigh = variance > threshold
+
+  if (isHigh) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-orange-900/50 bg-orange-950/20 px-3 py-2">
+        <AlertTriangle className="h-4 w-4 shrink-0 text-orange-400" />
+        <div>
+          <p className="font-mono text-xs font-semibold text-orange-300">High Disagreement</p>
+          <p className="text-[10px] text-orange-500">
+            Inter-agent variance {variance.toFixed(1)} exceeds threshold {threshold} — signal is contested.
+            INVEST downgraded to MONITOR.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
+      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+      <div>
+        <p className="font-mono text-xs font-semibold text-zinc-300">Low Disagreement</p>
+        <p className="text-[10px] text-zinc-500">
+          Agent variance {variance.toFixed(1)} — committee converged well.
+        </p>
+      </div>
+    </div>
+  )
 }
 
 // ─── OpportunitySheet ────────────────────────────────────────────────────────
@@ -106,9 +188,7 @@ export function OpportunitySheet() {
     return () => { cancelled = true }
   }, [selectedOpportunityId])
 
-  // Derived values from decision blob
   const decision = detail?.decision ?? {}
-  // Extract ticker from decision or from compound opportunity_id (ticker:detected_at)
   const rawId = selectedOpportunityId ?? ''
   const extractedTicker = rawId.includes(':') ? rawId.split(':', 1)[0] : rawId
   const ticker = (decision['ticker'] as string | undefined) ?? (extractedTicker || '—')
@@ -117,15 +197,12 @@ export function OpportunitySheet() {
   const allocationPct = Number(decision['suggested_allocation_pct'] ?? 0)
   const riskRating = (decision['risk_rating'] as string | undefined) ?? 'UNKNOWN'
   const timeHorizon = (decision['time_horizon'] as string | undefined)
-  const keyCatalysts = Array.isArray(decision['key_catalysts'])
-    ? (decision['key_catalysts'] as string[])
-    : undefined
-  const killConditions = Array.isArray(decision['kill_conditions'])
-    ? (decision['kill_conditions'] as string[])
-    : undefined
+  const keyCatalysts = Array.isArray(decision['key_catalysts']) ? (decision['key_catalysts'] as string[]) : undefined
+  const killConditions = Array.isArray(decision['kill_conditions']) ? (decision['kill_conditions'] as string[]) : undefined
   const cioSummary = (decision['cio_summary'] as string | undefined) ?? (decision['summary'] as string | undefined)
 
   const agentScores: AgentScore[] = (detail?.verdicts ?? []).map(toAgentScore)
+  const variance = computeVariance(agentScores)
 
   return (
     <Sheet
@@ -146,7 +223,7 @@ export function OpportunitySheet() {
             )}
           </div>
           <SheetDescription>
-            Opportunity analysis breakdown
+            Full investment committee breakdown
           </SheetDescription>
         </SheetHeader>
 
@@ -207,7 +284,9 @@ export function OpportunitySheet() {
                       <ul className="space-y-1">
                         {keyCatalysts.map((catalyst, i) => (
                           <li key={i} className="flex gap-1.5 text-xs text-zinc-300">
-                            <span className="mt-0.5 shrink-0 text-emerald-500">•</span>
+                            <span className="mt-0.5 shrink-0 text-emerald-500">
+                              <TrendingUp className="h-3 w-3" />
+                            </span>
                             <span>{catalyst}</span>
                           </li>
                         ))}
@@ -216,6 +295,21 @@ export function OpportunitySheet() {
                   )}
                 </section>
 
+                {/* ── Agent Consensus ──────────────────────────────── */}
+                {agentScores.length > 0 && (
+                  <>
+                    <Separator />
+                    <section className="space-y-3">
+                      <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                        Committee Consensus
+                      </p>
+                      <ConsensusBar agents={agentScores} />
+                      <VarianceBadge variance={variance} />
+                    </section>
+                  </>
+                )}
+
+                {/* ── Kill Conditions ──────────────────────────────── */}
                 {killConditions && killConditions.length > 0 && (
                   <>
                     <Separator />
@@ -235,6 +329,7 @@ export function OpportunitySheet() {
                   </>
                 )}
 
+                {/* ── Agent Breakdown ──────────────────────────────── */}
                 {agentScores.length > 0 && (
                   <>
                     <Separator />

@@ -5,12 +5,13 @@ All responses include detected_at timestamps satisfying VIS-04.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,9 +27,19 @@ class SignalResponse(BaseModel):
     score: Decimal
     composite_score: Optional[Decimal]
     passed_gate: bool
-    detail: Optional[str]
+    detail: Optional[Any] = None
+    source: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _parse_detail_json(self) -> "SignalResponse":
+        if isinstance(self.detail, str):
+            try:
+                self.detail = json.loads(self.detail)
+            except (json.JSONDecodeError, TypeError):
+                self.detail = None
+        return self
 
 
 router = APIRouter(

@@ -23,13 +23,19 @@ _FRESHNESS_TTL = timedelta(hours=24)
 
 
 @app.task(name="app.tasks.ingest_fundamentals.run", bind=True, max_retries=3)
-def run(self: object) -> dict:
+def run(self: object, tickers_override: list[str] | None = None) -> dict:
     """Fetch fundamental ratios for every WATCHLIST ticker and persist to DB.
 
     Skips a ticker if its most recent fundamentals row is < 24 hours old.
+
+    Args:
+        tickers_override: If provided, fetch only these tickers instead of the full watchlist.
     """
-    watchlist_raw = os.environ.get("WATCHLIST", _DEFAULT_WATCHLIST)
-    tickers = [t.strip() for t in watchlist_raw.split(",") if t.strip()]
+    if tickers_override:
+        tickers = [t.strip().upper() for t in tickers_override if t.strip()]
+    else:
+        watchlist_raw = os.environ.get("WATCHLIST", _DEFAULT_WATCHLIST)
+        tickers = [t.strip() for t in watchlist_raw.split(",") if t.strip()]
 
     connector = YFinanceConnector()
     cutoff = datetime.now(tz=timezone.utc) - _FRESHNESS_TTL

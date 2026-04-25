@@ -1,7 +1,10 @@
 import { memo } from 'react'
+import { TrendingUp, TrendingDown } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { AgentBreakdown } from '@/components/output/AgentBreakdown'
+import { usePriceChange } from '@/hooks/usePriceChange'
+import { usePipelineStore } from '@/store/pipelineStore'
 import type { Opportunity } from '@/types/pipeline'
 
 // ─── Verdict helpers ────────────────────────────────────────────────────────
@@ -78,7 +81,12 @@ export const OpportunityCard = memo(function OpportunityCard({
     keyCatalysts,
     agentScores,
     cioSummary,
+    decidedAt,
+    opportunityId,
   } = opportunity
+
+  const setSelectedOpportunity = usePipelineStore((s) => s.setSelectedOpportunity)
+  const { changePct } = usePriceChange(ticker, decidedAt)
 
   const { badgeClass, borderClass } = getVerdictStyle(finalVerdict)
   const riskBadgeClass = getRiskBadgeClass(riskRating)
@@ -94,7 +102,8 @@ export const OpportunityCard = memo(function OpportunityCard({
 
   return (
     <Card
-      className={`border-l-2 bg-zinc-900 ${borderClass} border-zinc-800`}
+      className={`cursor-pointer border-l-2 bg-zinc-900 ${borderClass} border-zinc-800 hover:border-zinc-600 transition-colors`}
+      onClick={() => setSelectedOpportunity(opportunityId)}
     >
       <CardContent className="space-y-3 p-4">
         {/* Header row */}
@@ -102,6 +111,18 @@ export const OpportunityCard = memo(function OpportunityCard({
           <span className="font-mono text-lg font-bold text-white">{ticker}</span>
           <Badge className={badgeClass}>{finalVerdict}</Badge>
           <Badge className={riskBadgeClass}>{riskRating}</Badge>
+          {/* Price outcome badge */}
+          {changePct != null && (
+            <span
+              className={`ml-auto flex items-center gap-0.5 font-mono text-xs font-semibold ${
+                changePct >= 0 ? 'text-emerald-400' : 'text-red-400'
+              }`}
+              title="Price change since decision"
+            >
+              {changePct >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+              {changePct >= 0 ? '+' : ''}{changePct.toFixed(1)}%
+            </span>
+          )}
         </div>
 
         {/* Conviction score */}

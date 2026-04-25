@@ -37,11 +37,15 @@ def _parse_watchlist() -> list[str]:
 
 
 @app.task(name="app.tasks.scan_market.run", bind=True, max_retries=2)
-def run(self) -> dict:  # type: ignore[override]
-    """Scan watchlist tickers, detect signals, score, gate, and persist."""
+def run(self, tickers_override: list[str] | None = None) -> dict:  # type: ignore[override]
+    """Scan watchlist tickers, detect signals, score, gate, and persist.
+
+    Args:
+        tickers_override: If provided, scan only these tickers instead of the full watchlist.
+    """
     r = redis.from_url(_REDIS_URL)
 
-    watchlist = _parse_watchlist()
+    watchlist = [t.strip().upper() for t in tickers_override if t.strip()] if tickers_override else _parse_watchlist()
     passed = 0
     rejected = 0
     enqueued_count = 0
@@ -105,6 +109,19 @@ def run(self) -> dict:  # type: ignore[override]
                         source="scanner",
                     )
                     session.merge(record)
+                    try:
+                        r.publish("signal:events", json.dumps({
+                            "ticker": signal["ticker"],
+                            "signal_type": signal["signal_type"],
+                            "score": float(signal["score"]),
+                            "composite_score": composite,
+                            "passed_gate": gate_passed,
+                            "detected_at": detected_at.isoformat(),
+                            "detail": signal.get("detail"),
+                            "source": "scanner",
+                        }, default=str))
+                    except Exception:  # noqa: BLE001
+                        pass
 
             except Exception as exc:  # noqa: BLE001
                 msg = f"{ticker}: {exc}"

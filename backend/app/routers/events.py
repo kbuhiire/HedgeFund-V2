@@ -60,3 +60,33 @@ async def stream_pipeline_events(
             logger.info("SSE client disconnected from pipeline:events")
 
     return EventSourceResponse(event_generator())
+
+
+@router.get("/signals")
+async def stream_signal_events(
+    _user: User = Depends(get_current_user_from_query),
+) -> EventSourceResponse:
+    """Stream detected signal events from Redis Pub/Sub as Server-Sent Events.
+
+    Each SSE message has ``event: signal`` and ``data`` containing the
+    JSON-serialised signal payload published by the market scanner.
+    """
+
+    async def event_generator():
+        r = aioredis.from_url(_REDIS_URL)
+        pubsub = r.pubsub()
+        await pubsub.subscribe("signal:events")
+        logger.info("SSE client subscribed to signal:events")
+        try:
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    data = message["data"]
+                    if isinstance(data, bytes):
+                        data = data.decode("utf-8")
+                    yield {"event": "signal", "data": data}
+        finally:
+            await pubsub.unsubscribe("signal:events")
+            await r.aclose()
+            logger.info("SSE client disconnected from signal:events")
+
+    return EventSourceResponse(event_generator())
